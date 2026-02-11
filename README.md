@@ -43,3 +43,12 @@ O **SLA Calculator** foi desenvolvido para simular um cenário real de controle 
 
 ## 📂 Estrutura do Projeto
 
+src/
+├─ components/
+│ ├─ Header.jsx
+│ ├─ SlaForm.jsx
+│ ├─ HistoricoTable.jsx
+├─ utils/
+│ ├─ dateUtils.js
+│ ├─ csvUtils.js
+├─ App.jsx
