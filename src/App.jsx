@@ -23,25 +23,34 @@ export default function App() {
   }, [prevista, entrega]);
 
   function onCalcular() {
-    if (!prevista || !entrega) {
-      alert("Preencha as duas datas.");
-      return;
-    }
-    const atraso = diffDays(prevista, entrega);
-    const status = atraso > 0 ? "Atrasado" : "No prazo";
-
-    setHistorico((old) => [
-      {
-        id: crypto.randomUUID(),
-        prevista,
-        entrega,
-        status,
-        atraso: Math.max(0, atraso),
-        criadoEm: new Date().toISOString(),
-      },
-      ...old,
-    ]);
+  if (!prevista || !entrega) {
+    alert("Preencha as duas datas.");
+    return;
   }
+
+  const atraso = diffDays(prevista, entrega);
+
+  // entrega antes da prevista (não faz sentido pra SLA)
+  if (atraso < 0) {
+    alert("A data de entrega não pode ser ANTES da data prevista.");
+    return;
+  }
+
+  const status = atraso > 0 ? "Atrasado" : "No prazo";
+
+  setHistorico((old) => [
+    {
+      id: crypto.randomUUID(),
+      prevista,
+      entrega,
+      status,
+      atraso,
+      criadoEm: new Date().toISOString(),
+    },
+    ...old,
+  ]);
+}
+
 
   function onLimpar() {
     setPrevista("");
@@ -51,6 +60,46 @@ export default function App() {
   function onRemover(id) {
     setHistorico((old) => old.filter((x) => x.id !== id));
   }
+
+function escapeCsv(value) {
+  const s = String(value ?? "");
+  // coloca aspas se tiver vírgula, aspas ou quebra de linha
+  if (/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
+  return s;
+}
+
+function onExportarCsv() {
+  if (historico.length === 0) {
+    alert("Não há registros para exportar.");
+    return;
+  }
+
+  const header = ["prevista", "entrega", "status", "atraso_dias", "criado_em"];
+  const rows = historico.map((r) => [
+    r.prevista,
+    r.entrega,
+    r.status,
+    r.atraso,
+    r.criadoEm,
+  ]);
+
+  const csv =
+    [header, ...rows]
+      .map((row) => row.map(escapeCsv).join(","))
+      .join("\n") + "\n";
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `sla-historico-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+
+
 
   function badgeColor(status) {
     return status === "Atrasado"
@@ -146,7 +195,24 @@ export default function App() {
             >
               Limpar datas
             </button>
+
+
+            <button
+  onClick={onExportarCsv}
+  style={{
+    padding: "10px 14px",
+    borderRadius: 10,
+    border: "1px solid #374151",
+    background: "transparent",
+    color: "#E5E7EB",
+    cursor: "pointer",
+  }}
+>
+  Exportar CSV
+</button>
+
           </div>
+
 
           {/* Resultado */}
           <div style={{ marginTop: 14 }}>
