@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
-
 function diffDays(dateA, dateB) {
   const a = new Date(dateA);
   const b = new Date(dateB);
-  // zera horas pra não dar diferença por fuso/horário
   a.setHours(0, 0, 0, 0);
   b.setHours(0, 0, 0, 0);
   const ms = b - a;
@@ -12,73 +10,80 @@ function diffDays(dateA, dateB) {
 }
 
 export default function App() {
+  const [nf, setNf] = useState("");
   const [prevista, setPrevista] = useState("");
   const [entrega, setEntrega] = useState("");
   const [historico, setHistorico] = useState([]);
 
   // 1) Carrega do LocalStorage quando o app abre
-useEffect(() => {
-  const saved = localStorage.getItem("sla_historico");
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) setHistorico(parsed);
-    } catch {
-      // se der erro, ignora
+  useEffect(() => {
+    const saved = localStorage.getItem("sla_historico");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setHistorico(parsed);
+      } catch {
+        // ignora
+      }
+    }
+  }, []);
+
+  // 2) Salva no LocalStorage sempre que o histórico mudar
+  useEffect(() => {
+    localStorage.setItem("sla_historico", JSON.stringify(historico));
+  }, [historico]);
+
+  function onLimparHistorico() {
+    if (confirm("Tem certeza que deseja limpar todo o histórico?")) {
+      setHistorico([]);
     }
   }
-}, []);
 
-function onLimparHistorico() {
-  if (confirm("Tem certeza que deseja limpar todo o histórico?")) {
-    setHistorico([]);
+  const resultado = useMemo(() => {
+    if (!prevista || !entrega) return null;
+
+    const variacao = diffDays(prevista, entrega); // pode ser negativo
+    const status =
+      variacao < 0 ? "Antecipado" : variacao === 0 ? "No prazo" : "Atrasado";
+
+    return { variacao, status };
+  }, [prevista, entrega]);
+
+  function onCalcular() {
+    if (!nf.trim()) {
+      alert("Preencha a NF.");
+      return;
+    }
+    if (!prevista || !entrega) {
+      alert("Preencha as duas datas.");
+      return;
+    }
+
+    const variacao = diffDays(prevista, entrega);
+    const status =
+      variacao < 0 ? "Antecipado" : variacao === 0 ? "No prazo" : "Atrasado";
+
+    setHistorico((old) => [
+      {
+        id: crypto.randomUUID(),
+        nf,
+        prevista,
+        entrega,
+        status,
+        variacao,
+        criadoEm: new Date().toISOString(),
+      },
+      ...old,
+    ]);
+
+    // (2) Limpar campos após salvar
+    setNf("");
+    setPrevista("");
+    setEntrega("");
   }
-}
-
-
-// 2) Salva no LocalStorage sempre que o histórico mudar
-useEffect(() => {
-  localStorage.setItem("sla_historico", JSON.stringify(historico));
-}, [historico]);
-
-
-const resultado = useMemo(() => {
-  if (!prevista || !entrega) return null;
-
-  const variacao = diffDays(prevista, entrega); // pode ser negativo
-  const status =
-    variacao < 0 ? "Antecipado" : variacao === 0 ? "No prazo" : "Atrasado";
-
-  return { variacao, status };
-}, [prevista, entrega]);
-
-
-function onCalcular() {
-  if (!prevista || !entrega) {
-    alert("Preencha as duas datas.");
-    return;
-  }
-
-  const variacao = diffDays(prevista, entrega); // negativo = antecipou
-  const status =
-    variacao < 0 ? "Antecipado" : variacao === 0 ? "No prazo" : "Atrasado";
-
-  setHistorico((old) => [
-    {
-      id: crypto.randomUUID(),
-      prevista,
-      entrega,
-      status,
-      variacao,
-      criadoEm: new Date().toISOString(),
-    },
-    ...old,
-  ]);
-}
-
-
 
   function onLimpar() {
+    setNf("");
     setPrevista("");
     setEntrega("");
   }
@@ -87,61 +92,74 @@ function onCalcular() {
     setHistorico((old) => old.filter((x) => x.id !== id));
   }
 
-function escapeCsv(value) {
-  const s = String(value ?? "");
-  // coloca aspas se tiver vírgula, aspas ou quebra de linha
-  if (/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
-  return s;
-}
-
-function onExportarCsv() {
-  if (historico.length === 0) {
-    alert("Não há registros para exportar.");
-    return;
+  function escapeCsv(value) {
+    const s = String(value ?? "");
+    if (/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
+    return s;
   }
 
-  const header = ["prevista", "entrega", "status", "atraso_dias", "criado_em"];
-  const rows = historico.map((r) => [
-    r.prevista,
-    r.entrega,
-    r.status,
-    r.atraso,
-    r.criadoEm,
-  ]);
+  function onExportarCsv() {
+    if (historico.length === 0) {
+      alert("Não há registros para exportar.");
+      return;
+    }
 
-  const csv =
-    [header, ...rows]
-      .map((row) => row.map(escapeCsv).join(","))
-      .join("\n") + "\n";
+    // (1) CSV com NF + variacao_dias (não atraso)
+    const header = ["nf", "prevista", "entrega", "status", "variacao_dias", "criado_em"];
+    const rows = historico.map((r) => [
+      r.nf,
+      r.prevista,
+      r.entrega,
+      r.status,
+      r.variacao,
+      r.criadoEm,
+    ]);
 
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
+    const csv =
+      [header, ...rows]
+        .map((row) => row.map(escapeCsv).join(","))
+        .join("\n") + "\n";
 
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `sla-historico-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
 
-  URL.revokeObjectURL(url);
-}
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sla-historico-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
 
-
+    URL.revokeObjectURL(url);
+  }
 
   function badgeColor(status) {
-  if (status === "Atrasado") return { background: "#FEE2E2", color: "#991B1B" };
-  if (status === "Antecipado") return { background: "#DBEAFE", color: "#1D4ED8" };
-  return { background: "#DCFCE7", color: "#166534" }; // No prazo
-}
-
+    if (status === "Atrasado") return { background: "#FEE2E2", color: "#991B1B" };
+    if (status === "Antecipado") return { background: "#DBEAFE", color: "#1D4ED8" };
+    return { background: "#DCFCE7", color: "#166534" }; // No prazo
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "#0B1220", color: "#E5E7EB" }}>
       <div style={{ maxWidth: 980, margin: "0 auto", padding: 24 }}>
-        <header style={{ marginBottom: 18 }}>
-          <h1 style={{ margin: 0, fontSize: 28 }}>SLA Calculator</h1>
-          <p style={{ margin: "6px 0 0", color: "#9CA3AF" }}>
-            Calcule atraso e registre um histórico simples.
-          </p>
+        {/* (3) Cabeçalho com "GeroCorp" à direita */}
+        <header
+          style={{
+            marginBottom: 18,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 12,
+          }}
+        >
+          <div>
+            <h1 style={{ margin: 0, fontSize: 28 }}>SLA Calculator</h1>
+            <p style={{ margin: "6px 0 0", color: "#9CA3AF" }}>
+              Calcule atraso/antecipação e registre um histórico simples.
+            </p>
+          </div>
+
+          <div style={{ fontWeight: 900, letterSpacing: 0.5, fontSize: 18, color: "#E5E7EB" }}>
+            GeroCorp
+          </div>
         </header>
 
         {/* Card do formulário */}
@@ -156,10 +174,29 @@ function onExportarCsv() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
+              gridTemplateColumns: "1fr 1fr 1fr",
               gap: 12,
             }}
           >
+            {/* NF */}
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ fontSize: 13, color: "#9CA3AF" }}>NF</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="Ex: 123456"
+                value={nf}
+                onChange={(e) => setNf(e.target.value.replace(/\D/g, ""))}
+                style={{
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid #374151",
+                  background: "#0B1220",
+                  color: "#E5E7EB",
+                }}
+              />
+            </label>
+
             <label style={{ display: "grid", gap: 6 }}>
               <span style={{ fontSize: 13, color: "#9CA3AF" }}>Data prevista</span>
               <input
@@ -193,7 +230,7 @@ function onExportarCsv() {
             </label>
           </div>
 
-          <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+          <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
             <button
               onClick={onCalcular}
               style={{
@@ -220,41 +257,37 @@ function onExportarCsv() {
                 cursor: "pointer",
               }}
             >
-              Limpar datas
+              Limpar campos
             </button>
 
+            <button
+              onClick={onExportarCsv}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #374151",
+                background: "transparent",
+                color: "#E5E7EB",
+                cursor: "pointer",
+              }}
+            >
+              Exportar CSV
+            </button>
 
             <button
-  onClick={onExportarCsv}
-  style={{
-    padding: "10px 14px",
-    borderRadius: 10,
-    border: "1px solid #374151",
-    background: "transparent",
-    color: "#E5E7EB",
-    cursor: "pointer",
-  }}
->
-  Exportar CSV
-</button>
-
-<button
-  onClick={onLimparHistorico}
-  style={{
-    padding: "10px 14px",
-    borderRadius: 10,
-    border: "1px solid #374151",
-    background: "transparent",
-    color: "#E5E7EB",
-    cursor: "pointer",
-  }}
->
-  Limpar histórico
-</button>
-
-
+              onClick={onLimparHistorico}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #374151",
+                background: "transparent",
+                color: "#E5E7EB",
+                cursor: "pointer",
+              }}
+            >
+              Limpar histórico
+            </button>
           </div>
-
 
           {/* Resultado */}
           <div style={{ marginTop: 14 }}>
@@ -283,13 +316,12 @@ function onExportarCsv() {
                 </span>
 
                 <span style={{ color: "#9CA3AF" }}>
-  {resultado.status === "Atrasado"
-    ? `Atraso: ${resultado.variacao} dia(s)`
-    : resultado.status === "Antecipado"
-    ? `Antecipação: ${Math.abs(resultado.variacao)} dia(s)`
-    : "Entrega dentro do prazo"}
-</span>
-
+                  {resultado.status === "Atrasado"
+                    ? `Atraso: ${resultado.variacao} dia(s)`
+                    : resultado.status === "Antecipado"
+                    ? `Antecipação: ${Math.abs(resultado.variacao)} dia(s)`
+                    : "Entrega dentro do prazo"}
+                </span>
               </div>
             ) : (
               <div style={{ color: "#9CA3AF", fontSize: 13 }}>
@@ -314,11 +346,11 @@ function onExportarCsv() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#0B1220", color: "#9CA3AF", fontSize: 12 }}>
+                  <th style={{ textAlign: "left", padding: 12 }}>NF</th>
                   <th style={{ textAlign: "left", padding: 12 }}>Prevista</th>
                   <th style={{ textAlign: "left", padding: 12 }}>Entrega</th>
                   <th style={{ textAlign: "left", padding: 12 }}>Status</th>
                   <th style={{ textAlign: "left", padding: 12 }}>Variação (dias)</th>
-
                   <th style={{ textAlign: "right", padding: 12 }}>Ações</th>
                 </tr>
               </thead>
@@ -326,17 +358,16 @@ function onExportarCsv() {
               <tbody>
                 {historico.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ padding: 14, color: "#9CA3AF" }}>
+                    <td colSpan={6} style={{ padding: 14, color: "#9CA3AF" }}>
                       Nenhum registro ainda.
                     </td>
                   </tr>
                 ) : (
                   historico.map((row) => (
                     <tr key={row.id} style={{ borderTop: "1px solid #1F2937" }}>
+                      <td style={{ padding: 12 }}>{row.nf}</td>
                       <td style={{ padding: 12 }}>{row.prevista}</td>
                       <td style={{ padding: 12 }}>{row.entrega}</td>
-                      <td style={{ padding: 12 }}>{row.variacao}</td>
-
                       <td style={{ padding: 12 }}>
                         <span
                           style={{
@@ -350,7 +381,7 @@ function onExportarCsv() {
                           {row.status}
                         </span>
                       </td>
-                      <td style={{ padding: 12 }}>{row.atraso}</td>
+                      <td style={{ padding: 12 }}>{row.variacao}</td>
                       <td style={{ padding: 12, textAlign: "right" }}>
                         <button
                           onClick={() => onRemover(row.id)}
