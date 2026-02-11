@@ -42,28 +42,26 @@ useEffect(() => {
 }, [historico]);
 
 
-  const resultado = useMemo(() => {
-    if (!prevista || !entrega) return null;
-    const atraso = diffDays(prevista, entrega);
-    const status = atraso > 0 ? "Atrasado" : "No prazo";
-    return { atraso, status };
-  }, [prevista, entrega]);
+const resultado = useMemo(() => {
+  if (!prevista || !entrega) return null;
 
-  function onCalcular() {
+  const variacao = diffDays(prevista, entrega); // pode ser negativo
+  const status =
+    variacao < 0 ? "Antecipado" : variacao === 0 ? "No prazo" : "Atrasado";
+
+  return { variacao, status };
+}, [prevista, entrega]);
+
+
+function onCalcular() {
   if (!prevista || !entrega) {
     alert("Preencha as duas datas.");
     return;
   }
 
-  const atraso = diffDays(prevista, entrega);
-
-  // entrega antes da prevista (não faz sentido pra SLA)
-  if (atraso < 0) {
-    alert("A data de entrega não pode ser ANTES da data prevista.");
-    return;
-  }
-
-  const status = atraso > 0 ? "Atrasado" : "No prazo";
+  const variacao = diffDays(prevista, entrega); // negativo = antecipou
+  const status =
+    variacao < 0 ? "Antecipado" : variacao === 0 ? "No prazo" : "Atrasado";
 
   setHistorico((old) => [
     {
@@ -71,12 +69,13 @@ useEffect(() => {
       prevista,
       entrega,
       status,
-      atraso,
+      variacao,
       criadoEm: new Date().toISOString(),
     },
     ...old,
   ]);
 }
+
 
 
   function onLimpar() {
@@ -129,10 +128,11 @@ function onExportarCsv() {
 
 
   function badgeColor(status) {
-    return status === "Atrasado"
-      ? { background: "#FEE2E2", color: "#991B1B" }
-      : { background: "#DCFCE7", color: "#166534" };
-  }
+  if (status === "Atrasado") return { background: "#FEE2E2", color: "#991B1B" };
+  if (status === "Antecipado") return { background: "#DBEAFE", color: "#1D4ED8" };
+  return { background: "#DCFCE7", color: "#166534" }; // No prazo
+}
+
 
   return (
     <div style={{ minHeight: "100vh", background: "#0B1220", color: "#E5E7EB" }}>
@@ -283,10 +283,13 @@ function onExportarCsv() {
                 </span>
 
                 <span style={{ color: "#9CA3AF" }}>
-                  {resultado.status === "Atrasado"
-                    ? `Atraso: ${Math.max(0, resultado.atraso)} dia(s)`
-                    : "Entrega dentro do prazo"}
-                </span>
+  {resultado.status === "Atrasado"
+    ? `Atraso: ${resultado.variacao} dia(s)`
+    : resultado.status === "Antecipado"
+    ? `Antecipação: ${Math.abs(resultado.variacao)} dia(s)`
+    : "Entrega dentro do prazo"}
+</span>
+
               </div>
             ) : (
               <div style={{ color: "#9CA3AF", fontSize: 13 }}>
@@ -314,7 +317,8 @@ function onExportarCsv() {
                   <th style={{ textAlign: "left", padding: 12 }}>Prevista</th>
                   <th style={{ textAlign: "left", padding: 12 }}>Entrega</th>
                   <th style={{ textAlign: "left", padding: 12 }}>Status</th>
-                  <th style={{ textAlign: "left", padding: 12 }}>Atraso (dias)</th>
+                  <th style={{ textAlign: "left", padding: 12 }}>Variação (dias)</th>
+
                   <th style={{ textAlign: "right", padding: 12 }}>Ações</th>
                 </tr>
               </thead>
@@ -331,6 +335,8 @@ function onExportarCsv() {
                     <tr key={row.id} style={{ borderTop: "1px solid #1F2937" }}>
                       <td style={{ padding: 12 }}>{row.prevista}</td>
                       <td style={{ padding: 12 }}>{row.entrega}</td>
+                      <td style={{ padding: 12 }}>{row.variacao}</td>
+
                       <td style={{ padding: 12 }}>
                         <span
                           style={{
