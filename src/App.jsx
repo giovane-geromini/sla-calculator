@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
 
 function diffDays(dateA, dateB) {
   const a = new Date(dateA);
@@ -14,6 +15,32 @@ export default function App() {
   const [prevista, setPrevista] = useState("");
   const [entrega, setEntrega] = useState("");
   const [historico, setHistorico] = useState([]);
+
+  // 1) Carrega do LocalStorage quando o app abre
+useEffect(() => {
+  const saved = localStorage.getItem("sla_historico");
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) setHistorico(parsed);
+    } catch {
+      // se der erro, ignora
+    }
+  }
+}, []);
+
+function onLimparHistorico() {
+  if (confirm("Tem certeza que deseja limpar todo o histórico?")) {
+    setHistorico([]);
+  }
+}
+
+
+// 2) Salva no LocalStorage sempre que o histórico mudar
+useEffect(() => {
+  localStorage.setItem("sla_historico", JSON.stringify(historico));
+}, [historico]);
+
 
   const resultado = useMemo(() => {
     if (!prevista || !entrega) return null;
@@ -210,6 +237,21 @@ function onExportarCsv() {
 >
   Exportar CSV
 </button>
+
+<button
+  onClick={onLimparHistorico}
+  style={{
+    padding: "10px 14px",
+    borderRadius: 10,
+    border: "1px solid #374151",
+    background: "transparent",
+    color: "#E5E7EB",
+    cursor: "pointer",
+  }}
+>
+  Limpar histórico
+</button>
+
 
           </div>
 
